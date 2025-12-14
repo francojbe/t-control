@@ -55,7 +55,7 @@ const ProfileView = ({ className, user, jobs, settings, onUpdateSettings }) => {
                     income,
                     job.expense_company || 0,
                     job.expense_tech || 0,
-                    job.applied_commission || 50,
+                    job.applied_commission ?? 50,
                     `"${type}"`
                 ].join(",");
             })

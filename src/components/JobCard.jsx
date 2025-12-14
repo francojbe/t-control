@@ -5,14 +5,15 @@ import { motion, useMotionValue, useTransform } from 'framer-motion';
 
 const JobCard = ({ job, onEdit, onDelete, settings = { techCommissionPct: 50, cardFeePct: 0 } }) => {
     // Ingresos
+    // Ingresos
     const totalIncome = (parseFloat(job.transfer) || 0) + (parseFloat(job.cash) || 0) + (parseFloat(job.link_payment) || 0);
 
-    // Gastos Operativos
-    const expenses = (parseFloat(job.expenseCompany) || 0) + (parseFloat(job.expenseTech) || 0);
+    // Gastos Operativos (DB keys are snake_case)
+    const expenseCompany = parseFloat(job.expense_company) || 0;
+    const expenseTech = parseFloat(job.expense_tech) || 0;
+    const expenses = expenseCompany + expenseTech;
 
     // Calcular Comisión TARJETA/LINK si aplica
-    // Nota: Asumimos que si hay valor en 'link_payment', se aplica el fee actual configurado.
-    // Idealmente guardaríamos el fee histórico en el job, pero por ahora usamos el del setting actual o 0.
     const isLinkPayment = parseFloat(job.link_payment) > 0;
     const cardFeePct = settings.cardFeePct || 0;
     const linkFeeAmount = isLinkPayment ? (totalIncome * (cardFeePct / 100)) : 0;
@@ -21,20 +22,20 @@ const JobCard = ({ job, onEdit, onDelete, settings = { techCommissionPct: 50, ca
     const profit = (totalIncome - linkFeeAmount) - expenses;
 
     // Get Commission % (Default to 50 if not set)
-    const commissionPct = job.appliedCommission !== undefined ? job.appliedCommission : 50;
+    const commissionPct = job.applied_commission !== undefined ? job.applied_commission : 50;
 
     // Reparto de la Ganancia Neta
     const techShare = profit * (commissionPct / 100);
     const companyShare = profit * ((100 - commissionPct) / 100);
 
     // Pago final (+ Reembolsos)
-    const techTotal = techShare + (parseFloat(job.expenseTech) || 0);
-    const companyTotal = companyShare + (parseFloat(job.expenseCompany) || 0);
+    const techTotal = techShare + expenseTech;
+    const companyTotal = companyShare + expenseCompany;
 
     const isTransfer = parseFloat(job.transfer) > 0;
     // isLinkPayment defined above
-    const hasExpenseCompany = parseFloat(job.expenseCompany) > 0;
-    const hasExpenseTech = parseFloat(job.expenseTech) > 0;
+    const hasExpenseCompany = expenseCompany > 0;
+    const hasExpenseTech = expenseTech > 0;
 
     // --- SWIPE LOGIC ---
     const x = useMotionValue(0);
@@ -122,7 +123,9 @@ const JobCard = ({ job, onEdit, onDelete, settings = { techCommissionPct: 50, ca
                 {(hasExpenseCompany || hasExpenseTech) && (
                     <div className="flex items-center gap-2 text-xs text-red-500 dark:text-red-400 bg-red-50 dark:bg-red-900/20 px-2 py-1 rounded-md w-fit transition-colors">
                         <TrendingUp size={12} />
-                        <span>Gasto: ${expenses.toLocaleString()} ({hasExpenseCompany ? 'Empresa' : 'Técnico'})</span>
+                        <span>
+                            Gasto: ${expenses.toLocaleString()} ({hasExpenseCompany && hasExpenseTech ? 'Mixto' : (hasExpenseCompany ? 'Empresa' : 'Técnico')})
+                        </span>
                     </div>
                 )}
 

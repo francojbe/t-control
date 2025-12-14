@@ -11,9 +11,9 @@ const JobForm = ({ isOpen, onClose, onAddJob, initialData, settings = { techComm
     const [incomeType, setIncomeType] = useState('transfer');
     const [incomeAmount, setIncomeAmount] = useState('');
 
-    // Datos de Gasto (Combo box)
-    const [expenseType, setExpenseType] = useState('none');
-    const [expenseAmount, setExpenseAmount] = useState('');
+    // Datos de Gasto (Separados)
+    const [expenseCompany, setExpenseCompany] = useState('');
+    const [expenseTech, setExpenseTech] = useState('');
 
     // --- EFECTO: CARGAR DATOS AL ABRIR ---
     useEffect(() => {
@@ -27,10 +27,14 @@ const JobForm = ({ isOpen, onClose, onAddJob, initialData, settings = { techComm
                 // Determinar tipo de ingreso
                 const transferVal = parseFloat(initialData.transfer) || 0;
                 const cashVal = parseFloat(initialData.cash) || 0;
+                const linkVal = parseFloat(initialData.link_payment) || 0;
 
-                if (transferVal > 0) {
+                if (linkVal > 0) {
+                    setIncomeType('link');
+                    setIncomeAmount(linkVal.toString());
+                } else if (transferVal > 0) {
                     setIncomeType('transfer');
-                    setIncomeAmount(transferVal.toString()); // Nota: esto incluye el gasto, así que está bien
+                    setIncomeAmount(transferVal.toString());
                 } else if (cashVal > 0) {
                     setIncomeType('cash');
                     setIncomeAmount(cashVal.toString());
@@ -39,20 +43,12 @@ const JobForm = ({ isOpen, onClose, onAddJob, initialData, settings = { techComm
                     setIncomeAmount('');
                 }
 
-                // Determinar tipo de gasto
-                const expCompany = parseFloat(initialData.expenseCompany) || 0;
-                const expTech = parseFloat(initialData.expenseTech) || 0;
+                // Cargar gastos
+                const expCompany = parseFloat(initialData.expense_company) || 0;
+                const expTech = parseFloat(initialData.expense_tech) || 0;
 
-                if (expCompany > 0) {
-                    setExpenseType('company');
-                    setExpenseAmount(expCompany.toString());
-                } else if (expTech > 0) {
-                    setExpenseType('tech');
-                    setExpenseAmount(expTech.toString());
-                } else {
-                    setExpenseType('none');
-                    setExpenseAmount('');
-                }
+                setExpenseCompany(expCompany > 0 ? expCompany.toString() : '');
+                setExpenseTech(expTech > 0 ? expTech.toString() : '');
 
             } else {
                 // MODO NUEVO (RESET)
@@ -60,25 +56,22 @@ const JobForm = ({ isOpen, onClose, onAddJob, initialData, settings = { techComm
                 setDate(new Date().toISOString().split('T')[0]);
                 setDescription('');
                 setIncomeAmount('');
-                setExpenseAmount('');
+                setExpenseCompany('');
+                setExpenseTech('');
                 setIncomeType('transfer');
-                setExpenseType('none');
             }
         }
     }, [isOpen, initialData]);
 
-    // NOTE: Need to import useEffect for this to work
-
-
     // Cálculo en vivo para el formulario (Preview)
     const currentIncome = parseFloat(incomeAmount) || 0;
-    const currentExpense = parseFloat(expenseAmount) || 0;
+    const currentExpCompany = parseFloat(expenseCompany) || 0;
+    const currentExpTech = parseFloat(expenseTech) || 0;
 
-    // Si no hay gasto seleccionado, el gasto es 0 para el cálculo
-    const effectiveExpense = expenseType === 'none' ? 0 : currentExpense;
+    // Total gastos
+    const effectiveExpense = currentExpCompany + currentExpTech;
 
     // --- CÁLCULO DE COMISIÓN LINK DE PAGO ---
-    // Si es pago con Link, se descuenta la comisión DEL TOTAL antes de nada.
     const isLinkPayment = incomeType === 'link';
     const cardFeePct = settings.cardFeePct || 0;
     const linkFeeAmount = isLinkPayment ? (currentIncome * (cardFeePct / 100)) : 0;
@@ -86,8 +79,7 @@ const JobForm = ({ isOpen, onClose, onAddJob, initialData, settings = { techComm
     // El Ingreso Neto Real es (Total - Comisión Tarjeta)
     const netIncomeAfterLinkFee = currentIncome - linkFeeAmount;
 
-    // Lógica corregida para coincidir con JobCard:
-    // 1. Neto = (Ingreso Total - Comisión Link) - Gasto Operativo
+    // Utilidad = Neto - Gastos Totales
     const formProfit = netIncomeAfterLinkFee - effectiveExpense;
 
     // Lógica de distribución para el preview
@@ -98,8 +90,8 @@ const JobForm = ({ isOpen, onClose, onAddJob, initialData, settings = { techComm
     const companyBaseShare = formProfit * (1 - commissionFactor);
 
     // Sumar reembolsos si aplican
-    const techPart = techBaseShare + (expenseType === 'tech' ? effectiveExpense : 0);
-    const companyPart = companyBaseShare + (expenseType === 'company' ? effectiveExpense : 0);
+    const techPart = techBaseShare + currentExpTech;
+    const companyPart = companyBaseShare + currentExpCompany;
 
     const handleSubmit = () => {
         if (!client || !description) return;
@@ -110,14 +102,9 @@ const JobForm = ({ isOpen, onClose, onAddJob, initialData, settings = { techComm
             description,
             incomeType,
             incomeAmount,
-            expenseType,
-            expenseAmount,
-            linkFeeAmount // Optional: pass this if needed, but simple saving logic in App calculates it or ignores it. 
-            // Better to rely on App logic, but App currently doesn't re-calculate fee on save, it just sets `link_payment`.
-            // Wait, if I save `link_payment` as the FULL amount in App.jsx, I need to make sure 
-            // the display logic in JobCard ALSO does this fee subtraction.
-            // OR I save the NET amount in `link_payment`? 
-            // No, better save GROSS and subtract fee in display/calc to keep data true.
+            expenseCompany,
+            expenseTech,
+            linkFeeAmount
         });
 
         // Reset fields
@@ -125,9 +112,9 @@ const JobForm = ({ isOpen, onClose, onAddJob, initialData, settings = { techComm
         setDate(new Date().toISOString().split('T')[0]);
         setDescription('');
         setIncomeAmount('');
-        setExpenseAmount('');
+        setExpenseCompany('');
+        setExpenseTech('');
         setIncomeType('transfer');
-        setExpenseType('none');
     };
 
     return (
@@ -221,10 +208,9 @@ const JobForm = ({ isOpen, onClose, onAddJob, initialData, settings = { techComm
                                                 value={incomeAmount}
                                                 onChange={(e) => setIncomeAmount(e.target.value)}
                                                 onWheel={(e) => e.target.blur()}
-                                                className={`w-full border-none rounded-xl py-3 pl-8 pr-3 text-sm focus:ring-2 font-bold transition-colors ${incomeType === 'choice' ? 'bg-gray-50' : // Fallback
-                                                    incomeType === 'link' ? 'bg-indigo-50 dark:bg-indigo-900/20 text-indigo-700 dark:text-indigo-300 focus:ring-indigo-500' :
-                                                        incomeType === 'transfer' ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 focus:ring-blue-500' :
-                                                            'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300 focus:ring-green-500'}`}
+                                                className={`w-full border-none rounded-xl py-3 pl-8 pr-3 text-sm focus:ring-2 font-bold transition-colors ${incomeType === 'link' ? 'bg-indigo-50 dark:bg-indigo-900/20 text-indigo-700 dark:text-indigo-300 focus:ring-indigo-500' :
+                                                    incomeType === 'transfer' ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 focus:ring-blue-500' :
+                                                        'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300 focus:ring-green-500'}`}
                                             />
                                         </div>
                                     </div>
@@ -233,31 +219,28 @@ const JobForm = ({ isOpen, onClose, onAddJob, initialData, settings = { techComm
                                 <div className="space-y-1">
                                     <label className="text-xs font-semibold text-gray-500 dark:text-gray-400 ml-1">Gastos Asociados</label>
                                     <div className="flex gap-2">
+                                        {/* Gasto Empresa */}
                                         <div className="relative w-1/2">
-                                            <select
-                                                value={expenseType}
-                                                onChange={(e) => {
-                                                    setExpenseType(e.target.value);
-                                                    if (e.target.value === 'none') setExpenseAmount('');
-                                                }}
-                                                className="w-full bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 text-gray-700 dark:text-white rounded-xl p-3 pr-8 text-sm focus:ring-2 focus:ring-red-500 appearance-none font-medium transition-colors"
-                                            >
-                                                <option value="none">Sin Gastos</option>
-                                                <option value="company">Gasto Empresa</option>
-                                                <option value="tech">Gasto Técnico</option>
-                                            </select>
-                                            <ChevronDown size={16} className="absolute right-3 top-3.5 text-gray-400 pointer-events-none" />
-                                        </div>
-                                        <div className="relative w-1/2">
-                                            <DollarSign size={14} className="absolute left-3 top-3.5 text-gray-400" />
+                                            <div className="absolute left-3 top-3.5 text-xs font-bold text-gray-400 pointer-events-none">EMP</div>
                                             <input
                                                 type="number"
-                                                placeholder="Monto"
-                                                value={expenseAmount}
-                                                disabled={expenseType === 'none'}
-                                                onChange={(e) => setExpenseAmount(e.target.value)}
+                                                placeholder="0"
+                                                value={expenseCompany}
+                                                onChange={(e) => setExpenseCompany(e.target.value)}
                                                 onWheel={(e) => e.target.blur()}
-                                                className={`w-full border-none rounded-xl py-3 pl-8 pr-3 text-sm font-bold transition-colors ${expenseType === 'none' ? 'bg-gray-100 dark:bg-gray-700 text-gray-400 cursor-not-allowed' : 'bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300 focus:ring-2 focus:ring-red-500'}`}
+                                                className={`w-full border-none rounded-xl py-3 pl-10 pr-3 text-sm font-bold transition-colors bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300 focus:ring-2 focus:ring-red-500 placeholder-red-200`}
+                                            />
+                                        </div>
+                                        {/* Gasto Técnico */}
+                                        <div className="relative w-1/2">
+                                            <div className="absolute left-3 top-3.5 text-xs font-bold text-gray-400 pointer-events-none">TEC</div>
+                                            <input
+                                                type="number"
+                                                placeholder="0"
+                                                value={expenseTech}
+                                                onChange={(e) => setExpenseTech(e.target.value)}
+                                                onWheel={(e) => e.target.blur()}
+                                                className={`w-full border-none rounded-xl py-3 pl-10 pr-3 text-sm font-bold transition-colors bg-orange-50 dark:bg-orange-900/20 text-orange-700 dark:text-orange-300 focus:ring-2 focus:ring-orange-500 placeholder-orange-200`}
                                             />
                                         </div>
                                     </div>

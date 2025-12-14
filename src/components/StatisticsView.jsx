@@ -40,6 +40,10 @@ const StatisticsView = ({ jobs, settings }) => {
             const monthJobs = jobs.filter(j => j.date.startsWith(monthKey));
             const totalProfit = monthJobs.reduce((acc, job) => {
                 const income = (job.transfer || 0) + (job.cash || 0) + (job.link_payment || 0);
+                // Access snake_case properties directly as they come from DB or mapped in App.jsx
+                // App.jsx maps them to expenseCompany/Tech for HomeView, but raw jobs might have snake_case if passed directly?
+                // Wait, App.jsx does: setJobs(data || []). So `jobs` has snake_case keys from DB.
+                // HomeView maps them. StatisticsView receives raw `jobs`.
                 const expense = (job.expense_company || 0) + (job.expense_tech || 0);
 
                 // Calculate Tech Share (Net Profit accurately)

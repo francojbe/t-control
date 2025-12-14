@@ -5,10 +5,13 @@ import ProfileView from './components/ProfileView';
 import StatisticsView from './components/StatisticsView';
 import JobForm from './components/JobForm';
 import AuthView from './components/AuthView';
+import ResetPasswordView from './components/ResetPasswordView';
 import ConfirmationModal from './components/ConfirmationModal';
 import { supabase } from './supabaseClient';
+import { useToast } from './context/ToastContext';
 
 const App = () => {
+  const { showToast } = useToast();
   const [user, setUser] = useState(null);
   const [activeTab, setActiveTab] = useState('home');
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -21,6 +24,9 @@ const App = () => {
 
   // --- LOGOUT MODAL STATE ---
   const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false);
+
+  // --- PASSWORD RESET STATE ---
+  const [isPasswordResetMode, setIsPasswordResetMode] = useState(false);
 
   // ... (ESTADO DE DATOS)
   const [jobs, setJobs] = useState([]);
@@ -44,7 +50,13 @@ const App = () => {
     });
 
     // 2. Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      console.log("Auth Event:", event);
+
+      if (event === 'PASSWORD_RECOVERY') {
+        setIsPasswordResetMode(true);
+      }
+
       setUser(session?.user ?? null);
       setLoading(false);
     });
@@ -113,8 +125,9 @@ const App = () => {
     if (!supabase) return;
 
     // Preparar objeto para DB (snake_case)
-    const expenseVal = newJobData.expenseType !== 'none' ? (parseFloat(newJobData.expenseAmount) || 0) : 0;
     const totalTransaction = parseFloat(newJobData.incomeAmount) || 0;
+    const expenseComp = parseFloat(newJobData.expenseCompany) || 0;
+    const expenseTech = parseFloat(newJobData.expenseTech) || 0;
 
     const dbEntry = {
       user_id: user.id,
@@ -124,8 +137,8 @@ const App = () => {
       transfer: newJobData.incomeType === 'transfer' ? totalTransaction : 0,
       cash: newJobData.incomeType === 'cash' ? totalTransaction : 0,
       link_payment: newJobData.incomeType === 'link' ? totalTransaction : 0, // New field
-      expense_company: newJobData.expenseType === 'company' ? expenseVal : 0,
-      expense_tech: newJobData.expenseType === 'tech' ? expenseVal : 0,
+      expense_company: expenseComp,
+      expense_tech: expenseTech,
       applied_commission: businessSettings.techCommissionPct,
       // We might want to store the applied card fee percentage too for historical accuracy, 
       // but simpler for now to just calculate it on the fly or if I had a column.
@@ -136,15 +149,17 @@ const App = () => {
       if (editingJob) {
         const { error } = await supabase.from('jobs').update(dbEntry).eq('id', editingJob.id);
         if (error) throw error;
+        showToast('Trabajo actualizado correctamente');
       } else {
         const { error } = await supabase.from('jobs').insert([dbEntry]);
         if (error) throw error;
+        showToast('Trabajo guardado correctamente');
       }
       fetchJobs();
       setIsFormOpen(false);
       setEditingJob(null);
     } catch (error) {
-      alert('Error al guardar: ' + error.message);
+      showToast(error.message, 'error');
     }
   };
 
@@ -177,9 +192,10 @@ const App = () => {
       setJobs(prev => prev.filter(j => j.id !== jobToDelete));
       setIsDeleteModalOpen(false);
       setJobToDelete(null);
+      showToast('Trabajo eliminado correctamente');
     } catch (error) {
       console.error('Error deleting job:', error);
-      alert('Error al eliminar');
+      showToast('Error al eliminar el trabajo', 'error');
     }
   };
 
@@ -216,6 +232,19 @@ const App = () => {
         <div className="w-12 h-12 border-4 border-gray-300 border-t-black rounded-full animate-spin"></div>
       </div>
     );
+  }
+
+  // --- PASSWORD RESET MODE ---
+  if (isPasswordResetMode) {
+    return (
+      <ResetPasswordView
+        onPasswordUpdated={() => {
+          setIsPasswordResetMode(false);
+          // Optionally redirect or show login again, but auth state usually persists or user can just login
+          window.location.href = '/';
+        }}
+      />
+    )
   }
 
   // Si no hay usuario, mostramos el Login

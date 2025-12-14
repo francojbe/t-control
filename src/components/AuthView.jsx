@@ -2,16 +2,22 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Mail, Lock, ArrowRight, Eye, EyeOff, CheckSquare, Square, User } from 'lucide-react';
 import { supabase } from '../supabaseClient';
+import { useToast } from '../context/ToastContext';
 
 const AuthView = ({ onLogin }) => {
-    const [isLogin, setIsLogin] = useState(true);
+    const { showToast } = useToast();
+    // states: 'login' | 'register' | 'forgot_password'
+    const [viewMode, setViewMode] = useState('login');
+
+    // Form fields
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [name, setName] = useState('');
+
+    // UI states
     const [showPassword, setShowPassword] = useState(false);
     const [loading, setLoading] = useState(false);
     const [errorMessage, setErrorMessage] = useState('');
-
     const [showForm, setShowForm] = useState(false);
 
     // Secuencia de animación inicial
@@ -34,8 +40,38 @@ const AuthView = ({ onLogin }) => {
         setter(e.target.value);
     };
 
+    const handleForgotPassword = async (e) => {
+        e.preventDefault();
+        setLoading(true);
+        setErrorMessage('');
+
+        if (!email) {
+            setErrorMessage("Ingresa tu correo electrónico.");
+            setLoading(false);
+            return;
+        }
+
+        try {
+            const { error } = await supabase.auth.resetPasswordForEmail(email, {
+                redirectTo: `${window.location.origin}/`,
+            });
+            if (error) throw error;
+            showToast("¡Enlace enviado! Revisa tu correo.", "success");
+            setViewMode('login');
+        } catch (error) {
+            setErrorMessage(getErrorText(error.message));
+        } finally {
+            setLoading(false);
+        }
+    };
+
     const handleSubmit = async (e) => {
         e.preventDefault();
+        if (viewMode === 'forgot_password') {
+            await handleForgotPassword(e);
+            return;
+        }
+
         setLoading(true);
         setErrorMessage('');
 
@@ -46,8 +82,8 @@ const AuthView = ({ onLogin }) => {
         }
 
         try {
-            if (isLogin) {
-                // --- LOGIN REAL ---
+            if (viewMode === 'login') {
+                // --- LOGIN ---
                 const { data, error } = await supabase.auth.signInWithPassword({
                     email,
                     password,
@@ -55,7 +91,7 @@ const AuthView = ({ onLogin }) => {
 
                 if (error) throw error;
             } else {
-                // --- REGISTRO REAL ---
+                // --- REGISTRO ---
                 const { data, error } = await supabase.auth.signUp({
                     email,
                     password,
@@ -67,7 +103,8 @@ const AuthView = ({ onLogin }) => {
                 });
 
                 if (error) throw error;
-                alert('Registro exitoso! Revisa tu correo o ingresa si no requeriste confirmación.');
+                showToast('Registro exitoso! Revisa tu correo.', 'success');
+                setViewMode('login'); // Switch to login after successful register attempt
             }
         } catch (error) {
             setErrorMessage(getErrorText(error.message));
@@ -78,7 +115,7 @@ const AuthView = ({ onLogin }) => {
 
     const handleSocialLogin = async (provider) => {
         if (!supabase) {
-            alert("Necesitas configurar Supabase.");
+            showToast("Necesitas configurar Supabase.", "error");
             return;
         }
         try {
@@ -90,7 +127,7 @@ const AuthView = ({ onLogin }) => {
             });
             if (error) throw error;
         } catch (error) {
-            alert("Error: " + error.message);
+            showToast("Error: " + error.message, "error");
         }
     };
 
@@ -108,6 +145,10 @@ const AuthView = ({ onLogin }) => {
         hidden: { opacity: 0, y: 10 },
         visible: { opacity: 1, y: 0 }
     };
+
+    const isLogin = viewMode === 'login';
+    const isRegister = viewMode === 'register';
+    const isForgot = viewMode === 'forgot_password';
 
     return (
         <div className="min-h-screen bg-gray-100 flex items-center justify-center font-sans p-4">
@@ -181,12 +222,12 @@ const AuthView = ({ onLogin }) => {
                                     transition={{ delay: 0.3 }}
                                 >
                                     <h1 className="text-4xl font-sans font-extrabold text-gray-900 mb-2 tracking-tighter">
-                                        {isLogin ? 'T-Control' : 'Únete a T-Control'}
+                                        {isLogin ? 'T-Control' : (isRegister ? 'Únete a T-Control' : 'Recuperar Cuenta')}
                                     </h1>
                                     <p className="text-gray-600 text-sm px-8 font-medium">
-                                        {isLogin
-                                            ? 'Administra tus servicios y maximiza tus ganancias.'
-                                            : 'Regístrate para potenciar tus finanzas hoy mismo.'}
+                                        {isLogin && 'Administra tus servicios y maximiza tus ganancias.'}
+                                        {isRegister && 'Regístrate para potenciar tus finanzas hoy mismo.'}
+                                        {isForgot && 'Te enviaremos un enlace para restablecer tu contraseña.'}
                                     </p>
                                 </motion.div>
                             </div>
@@ -195,7 +236,7 @@ const AuthView = ({ onLogin }) => {
 
                                 {/* Name Field (Only for Signup) */}
                                 <AnimatePresence>
-                                    {!isLogin && (
+                                    {isRegister && (
                                         <motion.div
                                             initial={{ opacity: 0, height: 0 }}
                                             animate={{ opacity: 1, height: 'auto' }}
@@ -211,7 +252,7 @@ const AuthView = ({ onLogin }) => {
                                                     onChange={handleInputChange(setName)}
                                                     className="w-full bg-white/60 border border-gray-200 backdrop-blur-sm rounded-full py-3.5 pl-11 pr-4 outline-none focus:ring-2 focus:ring-black/5 focus:border-gray-400 transition-all font-medium text-gray-800 text-sm placeholder:text-gray-400"
                                                     placeholder="Tu nombre completo"
-                                                    required={!isLogin}
+                                                    required={isRegister}
                                                 />
                                             </div>
                                         </motion.div>
@@ -234,31 +275,37 @@ const AuthView = ({ onLogin }) => {
                                     </motion.div>
                                 </div>
 
-                                {/* Password Field */}
-                                <div className="space-y-2">
-                                    <label className="text-xs font-bold text-gray-700 ml-1">Contraseña</label>
-                                    <motion.div variants={itemVariants} className="relative">
-                                        <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
-                                        <input
-                                            type={showPassword ? "text" : "password"}
-                                            value={password}
-                                            onChange={handleInputChange(setPassword)}
-                                            className="w-full bg-white/60 border border-gray-200 backdrop-blur-sm rounded-full py-3.5 pl-11 pr-11 outline-none focus:ring-2 focus:ring-black/5 focus:border-gray-400 transition-all font-medium text-gray-800 text-sm placeholder:text-gray-400"
-                                            placeholder="••••••••"
-                                            required
-                                        />
-                                        <button
-                                            type="button"
-                                            onClick={() => setShowPassword(!showPassword)}
-                                            className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                                {/* Password Field (Not for Forgot Password) */}
+                                <AnimatePresence>
+                                    {!isForgot && (
+                                        <motion.div
+                                            initial={{ opacity: 0, height: 0 }}
+                                            animate={{ opacity: 1, height: 'auto' }}
+                                            exit={{ opacity: 0, height: 0 }}
+                                            className="space-y-2 overflow-hidden"
                                         >
-                                            {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-                                        </button>
-                                    </motion.div>
-
-                                    {/* Biometric Login Shortcut */}
-
-                                </div>
+                                            <label className="text-xs font-bold text-gray-700 ml-1">Contraseña</label>
+                                            <motion.div variants={itemVariants} className="relative">
+                                                <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+                                                <input
+                                                    type={showPassword ? "text" : "password"}
+                                                    value={password}
+                                                    onChange={handleInputChange(setPassword)}
+                                                    className="w-full bg-white/60 border border-gray-200 backdrop-blur-sm rounded-full py-3.5 pl-11 pr-11 outline-none focus:ring-2 focus:ring-black/5 focus:border-gray-400 transition-all font-medium text-gray-800 text-sm placeholder:text-gray-400"
+                                                    placeholder="••••••••"
+                                                    required={!isForgot}
+                                                />
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setShowPassword(!showPassword)}
+                                                    className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                                                >
+                                                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                                                </button>
+                                            </motion.div>
+                                        </motion.div>
+                                    )}
+                                </AnimatePresence>
 
                                 {/* ERROR MESSAGE DISPLAY */}
                                 <AnimatePresence>
@@ -283,7 +330,17 @@ const AuthView = ({ onLogin }) => {
                                             <div className="w-4 h-4 border-2 border-gray-300 rounded-[4px] group-hover:border-gray-500 transition-colors" />
                                             <span className="text-gray-500 font-medium">Recordarme</span>
                                         </div>
-                                        <span className="text-gray-900 font-bold cursor-pointer hover:underline">¿Olvidaste tu contraseña?</span>
+                                        <span onClick={() => setViewMode('forgot_password')} className="text-gray-900 font-bold cursor-pointer hover:underline">
+                                            ¿Olvidaste tu contraseña?
+                                        </span>
+                                    </div>
+                                )}
+
+                                {isForgot && (
+                                    <div className="text-center text-xs">
+                                        <span onClick={() => setViewMode('login')} className="text-gray-900 font-bold cursor-pointer hover:underline">
+                                            Volver a Iniciar Sesión
+                                        </span>
                                     </div>
                                 )}
 
@@ -295,7 +352,7 @@ const AuthView = ({ onLogin }) => {
                                     disabled={loading}
                                     className="w-full bg-black text-white py-4 rounded-full font-bold text-sm shadow-xl shadow-black/10 hover:shadow-black/20 transition-all flex items-center justify-center gap-2"
                                 >
-                                    {loading ? 'Procesando...' : (isLogin ? 'Iniciar Sesión' : 'Registrarse')}
+                                    {loading ? 'Procesando...' : (isLogin ? 'Iniciar Sesión' : (isRegister ? 'Registrarse' : 'Enviar Enlace'))}
                                 </motion.button>
                             </form>
 
@@ -322,15 +379,17 @@ const AuthView = ({ onLogin }) => {
                             </div>
 
                             {/* Toggle Bottom */}
-                            <div className="mt-8 text-center text-xs text-gray-500 font-medium">
-                                {isLogin ? "¿No tienes cuenta? " : "¿Ya tienes cuenta? "}
-                                <button
-                                    onClick={() => setIsLogin(!isLogin)}
-                                    className="text-black font-bold hover:underline"
-                                >
-                                    {isLogin ? 'Crea una cuenta' : 'Inicia sesión aquí'}
-                                </button>
-                            </div>
+                            {!isForgot && (
+                                <div className="mt-8 text-center text-xs text-gray-500 font-medium">
+                                    {isLogin ? "¿No tienes cuenta? " : "¿Ya tienes cuenta? "}
+                                    <button
+                                        onClick={() => setViewMode(isLogin ? 'register' : 'login')}
+                                        className="text-black font-bold hover:underline"
+                                    >
+                                        {isLogin ? 'Crea una cuenta' : 'Inicia sesión aquí'}
+                                    </button>
+                                </div>
+                            )}
                         </motion.div>
                     )}
                 </AnimatePresence>
